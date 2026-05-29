@@ -1,0 +1,47 @@
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.nupkg
+
+# Node / npm
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Native builds
+native/*/build/
+*.so
+*.dylib
+*.dll
+!Zeus.Dsp/runtimes/**
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.idea/
+*.swp
+*.swo
+.vscode/settings.json
+
+# Runtime
+*.log
+logs/
+*.db
+*.db-journal
+
+# Secrets / certs
+*.pem
+*.crt
+*.key
+!*.sample
+
+# NovaSdr specific
+wdsp-wisdom/
+~/.novasdr/
