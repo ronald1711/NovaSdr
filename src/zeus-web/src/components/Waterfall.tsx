@@ -1,0 +1,437 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+//
+// Zeus — OpenHPSDR Protocol-1 / Protocol-2 client.
+// Copyright (C) 2025-2026 Brian Keating (EI6LF),
+//                         Douglas J. Cerrato (KB2UKA), and contributors.
+//
+// This program is free software: you can redistribute it and/or modify it
+// under the terms of the GNU General Public License as published by the
+// Free Software Foundation, either version 2 of the License, or (at your
+// option) any later version. See the LICENSE file at the root of this
+// repository for the full text, or https://www.gnu.org/licenses/.
+//
+// Zeus is an independent reimplementation in .NET — not a fork. Its
+// Protocol-1 / Protocol-2 framing, WDSP integration, meter pipelines, and
+// TX behaviour were informed by studying the Thetis project
+// (https://github.com/ramdor/Thetis), the authoritative reference
+// implementation in the OpenHPSDR ecosystem. Zeus gratefully acknowledges
+// the Thetis contributors whose work made this possible:
+//
+//   Richard Samphire (MW0LGE), Warren Pratt (NR0V),
+//   Laurence Barker (G8NJJ),   Rick Koch (N1GP),
+//   Bryan Rambo (W4WMT),       Chris Codella (W2PA),
+//   Doug Wigley (W5WC),        FlexRadio Systems,
+//   Richard Allen (W5SD),      Joe Torrey (WD5Y),
+//   Andrew Mansfield (M0YGG),  Reid Campbell (MI0BOT),
+//   Sigi Jetzlsperger (DH1KLM).
+//
+// Thetis itself continues the GPL-governed lineage of FlexRadio PowerSDR
+// and the OpenHPSDR (TAPR/OpenHPSDR) ecosystem; that lineage is preserved
+// here. See ATTRIBUTIONS.md at the repository root for the full provenance
+// statement and per-component attribution.
+//
+// Protocol-2 / PureSignal / Saturn-class behaviour was additionally informed
+// by pihpsdr (https://github.com/dl1ycf/pihpsdr), maintained by Christoph
+// Wüllen (DL1YCF); and by DeskHPSDR
+// (https://github.com/dl1bz/deskhpsdr), maintained by Heiko (DL1BZ).
+// Both are GPL-2.0-or-later.
+//
+// WDSP — loaded by Zeus via P/Invoke — is Copyright (C) Warren Pratt
+// (NR0V), distributed under GPL v2 or later.
+//
+// Zeus is distributed WITHOUT ANY WARRANTY; see the GNU General Public
+// License for details.
+
+import { useEffect, useRef, useState } from 'react';
+import { COLORMAPS } from '../gl/colormap';
+import { createWfRenderer } from '../gl/waterfall';
+import { cancelDrawBusFrame, requestDrawBusFrame } from '../realtime/draw-bus';
+import { useConnectionStore } from '../state/connection-store';
+import { registerFrameConsumer, useDisplayStore } from '../state/display-store';
+import {
+  useDisplaySettingsStore,
+  WF_BRIGHTNESS_DEFAULT,
+  WF_BRIGHTNESS_MAX,
+  WF_BRIGHTNESS_MIN,
+} from '../state/display-settings-store';
+import { useTxStore } from '../state/tx-store';
+import { usePanTuneGesture } from '../util/use-pan-tune-gesture';
+import { WfDbScale } from './WfDbScale';
+
+// Throttle row uploads so the waterfall scrolls at ~(server tick / N).
+// With a 30 Hz server tick N=2 gives ~15 Hz, which is a comfortable scroll
+// speed without costing much CPU. Shift/reset still run every frame so VFO
+// retunes stay synchronised with the panadapter's offset.
+// TODO(phase-3.1): expose as a UI setting.
+const WF_PUSH_EVERY_N = 2;
+
+type WaterfallProps = {
+  /** When true, noise floor fades to transparent so the QRZ-mode map shows through. */
+  transparent?: boolean;
+};
+
+export function Waterfall({ transparent = false }: WaterfallProps = {}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rendererRef = useRef<ReturnType<typeof createWfRenderer> | null>(null);
+  // Live brightness ref — read by the WebGL draw closure each frame. We
+  // can't put dragBrightness in the render closure directly because the
+  // useEffect that builds the closure runs once on mount; instead we mutate
+  // a ref so the closure always sees the current value (committed store
+  // value while idle, in-flight drag value while the slider is moving).
+  const liveBrightnessRef = useRef<number>(WF_BRIGHTNESS_DEFAULT);
+  const requestRedrawRef = useRef<() => void>(() => {});
+  const autoRange = useDisplaySettingsStore((s) => s.autoRange);
+  const setAutoRange = useDisplaySettingsStore((s) => s.setAutoRange);
+  const colormap = useDisplaySettingsStore((s) => s.colormap);
+  const setColormap = useDisplaySettingsStore((s) => s.setColormap);
+  // Brightness slider state. Live drag value is held locally so the input
+  // remains responsive at native HTMLInputElement update rate; the committed
+  // store value is set on release (mouseup / touchend / keyup) at which
+  // point the store schedules a debounced PUT. Mirrors AfGainSlider's
+  // "stream during drag, flush on release" pattern but for a non-realtime
+  // (purely-cosmetic) setting where streaming to the server would just churn
+  // writes; we only commit once.
+  const committedBrightness = useDisplaySettingsStore((s) => s.wfBrightness);
+  const setWfBrightness = useDisplaySettingsStore((s) => s.setWfBrightness);
+  const [dragBrightness, setDragBrightness] = useState<number | null>(null);
+  const brightnessValue = dragBrightness ?? committedBrightness;
+  // Tuning-cursor position. The waterfall canvas centres on the radio's
+  // hardware NCO (centerHz / radioLoHz) while VfoHz roams independently; the
+  // cursor must track the dial (VfoHz) so the operator can see where they're
+  // listening, not where the radio is anchored. Computed off panDb width ×
+  // hzPerPixel for span, identical math to FreqAxis's dial marker.
+  const cursorCenterHz = useDisplayStore((s) => s.centerHz);
+  const cursorHzPerPixel = useDisplayStore((s) => s.hzPerPixel);
+  const cursorWidth = useDisplayStore((s) => s.panDb?.length ?? 0);
+  const cursorViewportOffsetHz = useDisplayStore((s) => s.viewportOffsetHz);
+  const cursorVfoHz = useConnectionStore((s) => s.vfoHz);
+  const cursorPct = (() => {
+    if (!cursorWidth || cursorHzPerPixel <= 0) return 50;
+    const span = cursorWidth * cursorHzPerPixel;
+    // Viewport centre = hardware NCO + pure-pan offset; cursor sits at the
+    // dial's position relative to the shifted viewport, so a drag-right
+    // (negative offset) slides the cursor right with the rest of the
+    // spectrum.
+    const start = Number(cursorCenterHz) + cursorViewportOffsetHz - span / 2;
+    return ((cursorVfoHz - start) / span) * 100;
+  })();
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const gl = canvas.getContext('webgl2', { antialias: false, alpha: true, premultipliedAlpha: true });
+    if (!gl) {
+      console.error('WebGL2 not available');
+      return;
+    }
+
+    // Tell the realtime client that decoded spectrum frames are needed —
+    // ws-client.ts skips decodeDisplayFrame entirely when no consumer is
+    // registered (all spectrum surfaces closed).
+    const releaseFrameConsumer = registerFrameConsumer();
+
+    const renderer = createWfRenderer(gl);
+    rendererRef.current = renderer;
+    // Seed with the current store value so the palette survives remount
+    // (e.g. after a resize that cycles the canvas).
+    renderer.setColormap(useDisplaySettingsStore.getState().colormap);
+    renderer.setTransparent(transparent);
+    let lastSeqDrawn = -1;
+    let tickCounter = 0;
+    // Visibility gating: skip the rAF redraw when the waterfall tile is
+    // scrolled offscreen or the tab is hidden. We still push frames into
+    // the history texture so when visibility resumes the operator sees a
+    // continuous timeline; we just don't paint to the visible surface.
+    let inViewport = true;
+    let pageVisible = !document.hidden;
+    const isActive = () => inViewport && pageVisible;
+
+    const redraw = () => {
+      const { wfDbMin, wfDbMax, wfTxDbMin, wfTxDbMax } = useDisplaySettingsStore.getState();
+      const { moxOn, tunOn } = useTxStore.getState();
+      const keyed = moxOn || tunOn;
+      // Mirror DbScale.tsx — keyed (MOX/TUN) renders the TX waterfall
+      // window so the operator's RX noise-floor view stays put.
+      const dbMin = keyed ? wfTxDbMin : wfDbMin;
+      const dbMax = keyed ? wfTxDbMax : wfDbMax;
+      // Translate the viewport-offset Hz into the shader's UV space. Inside
+      // the IQ window (offset bounded by spanHz/2) WF_FS samples normally;
+      // past the edge the seed-dB fallback fills the unsampled columns.
+      const display = useDisplayStore.getState();
+      const width = display.panDb?.length ?? 0;
+      const spanHz = width > 0 ? width * display.hzPerPixel : 0;
+      const viewportOffsetUv = spanHz > 0 ? display.viewportOffsetHz / spanHz : 0;
+      renderer.draw(dbMin, dbMax, viewportOffsetUv, liveBrightnessRef.current);
+    };
+    const requestRedraw = () => {
+      if (!isActive()) return;
+      // Shared draw bus: panadapter + waterfall coalesce onto a single rAF
+      // per frame. The bus dedupes repeated requests for the same callback,
+      // matching the prior `if (rafHandle === 0)` gate.
+      requestDrawBusFrame(redraw);
+    };
+    // Expose requestRedraw so the brightness-drag effect outside this
+    // useEffect can ask for a repaint without rebuilding the GL closure.
+    requestRedrawRef.current = requestRedraw;
+
+    const resize = () => {
+      const { width, height } = container.getBoundingClientRect();
+      // Clamp the WebGL backing store at DPR=1. Waterfall is typically the
+      // largest GPU surface in the workspace; running it at native Retina
+      // DPR pushes 4× pixel data through every composite for no visible
+      // gain (the colormap is a smooth gradient and the per-row history
+      // shift is integer-pixel). Same rationale as Panadapter.
+      const dpr = Math.min(1, window.devicePixelRatio || 1);
+      const w = Math.max(1, Math.round(width * dpr));
+      const h = Math.max(1, Math.round(height * dpr));
+      canvas.width = w;
+      canvas.height = h;
+      renderer.resize(w, h);
+      requestRedraw();
+    };
+
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+    resize();
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          inViewport = e.isIntersecting;
+        }
+        if (isActive()) requestRedraw();
+      },
+      { threshold: 0 },
+    );
+    io.observe(container);
+    const onVisibilityChange = () => {
+      pageVisible = !document.hidden;
+      if (isActive()) requestRedraw();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    const unsub = useDisplayStore.subscribe((state) => {
+      if (state.lastSeq === lastSeqDrawn) return;
+      lastSeqDrawn = state.lastSeq;
+      if (state.wfValid && state.wfDb) {
+        tickCounter++;
+        const skipRowUpload = tickCounter % WF_PUSH_EVERY_N !== 0;
+        renderer.pushFrame(state.wfDb, state.centerHz, state.hzPerPixel, {
+          skipRowUpload,
+        });
+        // Feed the auto-range tracker — it's a no-op when AUTO is off.
+        useDisplaySettingsStore.getState().updateAutoRange(state.wfDb);
+      }
+      requestRedraw();
+    });
+
+    // Repaint on dB-range or colormap changes so the WfDbScale drag and the
+    // colormap swap land without waiting for the next server frame. Re-upload
+    // the LUT only when the id actually changed to avoid a texImage2D per
+    // tick. The prev-state diff is load-bearing: a no-selector subscribe
+    // used to fire (and redraw) on every store mutation, which during
+    // ordinary RX traffic pulled the waterfall rAF floor above the
+    // spectrum-tick rate.
+    const unsubSettings = useDisplaySettingsStore.subscribe((state, prev) => {
+      if (state.colormap !== prev.colormap) {
+        renderer.setColormap(state.colormap);
+        requestRedraw();
+        return;
+      }
+      if (
+        state.wfDbMin !== prev.wfDbMin ||
+        state.wfDbMax !== prev.wfDbMax ||
+        state.wfTxDbMin !== prev.wfTxDbMin ||
+        state.wfTxDbMax !== prev.wfTxDbMax
+      ) {
+        requestRedraw();
+      }
+      if (state.wfBrightness !== prev.wfBrightness) {
+        // Drag-time updates flow via liveBrightnessRef + the dragBrightness
+        // effect below. This branch catches store-level commits — late
+        // hydration from the server, restoring a non-default value on
+        // first paint, etc.
+        liveBrightnessRef.current = state.wfBrightness;
+        requestRedraw();
+      }
+    });
+
+    // Repaint when MOX/TUN flips so the RX↔TX waterfall window swap lands
+    // immediately instead of waiting for the next server frame or scale drag.
+    // App.tsx:211 uses the same prev-state diff pattern — without it the
+    // unconditional subscriber fires on every tx-store update (mic dBFS at
+    // 50 Hz from the worklet) and raises the floor on redraw rate above the
+    // spectrum-tick rate.
+    const unsubTx = useTxStore.subscribe((state, prev) => {
+      if (state.moxOn !== prev.moxOn || state.tunOn !== prev.tunOn) {
+        requestRedraw();
+      }
+    });
+
+    // Repaint when the operator drags the panadapter/waterfall viewport. A
+    // pure-pan drag mutates viewportOffsetHz at rAF rate; redraw the shader
+    // each tick so the texture sample window slides under the finger.
+    const unsubViewport = useDisplayStore.subscribe((state, prev) => {
+      if (state.viewportOffsetHz !== prev.viewportOffsetHz) {
+        requestRedraw();
+      }
+    });
+
+    return () => {
+      unsub();
+      unsubSettings();
+      unsubTx();
+      unsubViewport();
+      ro.disconnect();
+      io.disconnect();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      cancelDrawBusFrame(redraw);
+      renderer.dispose();
+      rendererRef.current = null;
+      releaseFrameConsumer();
+    };
+  }, []);
+
+  // Keep the renderer's transparency flag in sync without remounting so the
+  // history texture survives a QRZ engage/disengage. draw() runs on the next
+  // frame via the realtime store subscription.
+  useEffect(() => {
+    rendererRef.current?.setTransparent(transparent);
+  }, [transparent]);
+
+  // Live-preview drag: whenever the local drag value moves, push it into the
+  // ref the WebGL closure reads and ask for a redraw. On release the slider
+  // commits to the store and the existing subscription above takes over —
+  // this effect quiets once dragBrightness goes back to null because
+  // brightnessValue then equals the committed store value (no change).
+  useEffect(() => {
+    liveBrightnessRef.current = brightnessValue;
+    requestRedrawRef.current();
+  }, [brightnessValue]);
+
+  usePanTuneGesture(canvasRef);
+
+  return (
+    <div
+      ref={containerRef}
+      className="waterfall-canvas"
+      style={{
+        position: 'relative',
+        minHeight: 0,
+        width: '100%',
+        height: '100%',
+        background: 'var(--wf-0)',
+      }}
+    >
+      <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+      <WfDbScale />
+      <div
+        className="tuning-cursor"
+        style={{ left: `${cursorPct}%`, pointerEvents: 'none' }}
+      />
+      <div style={{ position: 'absolute', top: 6, right: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <div role="radiogroup" aria-label="Colormap" className="btn-row">
+          {COLORMAPS.map((cm) => {
+            const active = colormap === cm.id;
+            return (
+              <button
+                key={cm.id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setColormap(cm.id)}
+                title={`Waterfall colormap: ${cm.label}`}
+                className={`btn sm ${active ? 'active' : ''}`}
+              >
+                {cm.label}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => setAutoRange(!autoRange)}
+          aria-pressed={autoRange}
+          title={
+            autoRange
+              ? 'Auto dB range: tracking p5/p95 of waterfall samples'
+              : 'Fixed dB range: −120 to −30 dBFS'
+          }
+          className={`btn sm ${autoRange ? 'active' : ''}`}
+        >
+          {autoRange ? 'dB: AUTO' : 'dB: FIXED'}
+        </button>
+        {/* Brightness slider — issue #426. Live drag previews (the
+            dragBrightness effect repaints each input change) but only the
+            release commits to the store + persists. Double-click resets to
+            1.0 (no change). */}
+        <label
+          className="knob-group"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            background: 'rgba(0,0,0,0.45)',
+            border: '1px solid var(--line)',
+            borderRadius: 'var(--r-sm)',
+            padding: '2px 6px',
+            height: 22,
+          }}
+          title="Waterfall brightness (double-click to reset)"
+        >
+          <span
+            className="label-xs"
+            style={{
+              fontSize: 9,
+              letterSpacing: '0.12em',
+              color: 'var(--fg-2)',
+              textTransform: 'uppercase',
+            }}
+          >
+            BRT
+          </span>
+          <input
+            type="range"
+            min={WF_BRIGHTNESS_MIN}
+            max={WF_BRIGHTNESS_MAX}
+            step={0.05}
+            value={brightnessValue}
+            aria-label="Waterfall brightness"
+            onChange={(e) => setDragBrightness(Number(e.currentTarget.value))}
+            onMouseUp={() => {
+              if (dragBrightness !== null) setWfBrightness(dragBrightness);
+              setDragBrightness(null);
+            }}
+            onTouchEnd={() => {
+              if (dragBrightness !== null) setWfBrightness(dragBrightness);
+              setDragBrightness(null);
+            }}
+            onKeyUp={() => {
+              if (dragBrightness !== null) setWfBrightness(dragBrightness);
+              setDragBrightness(null);
+            }}
+            onDoubleClick={() => {
+              setDragBrightness(null);
+              setWfBrightness(WF_BRIGHTNESS_DEFAULT);
+            }}
+            style={{ width: 70, cursor: 'pointer', accentColor: 'var(--accent)' }}
+          />
+          <span
+            className="mono"
+            style={{
+              width: 30,
+              textAlign: 'right',
+              color: 'var(--fg-1)',
+              fontSize: 10,
+            }}
+          >
+            {brightnessValue.toFixed(2)}
+          </span>
+        </label>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,63 @@
+# Dependencies
+client/node_modules/
+client/dist/
+zeus-web/node_modules/
+zeus-web/dist/
+zeus-web/dev-dist/
+Zeus.Server.Hosting/wwwroot/
+
+# Stray npm artifacts from running `npm install` at the repo root.
+# Zeus has no root-level package.json — the JS app lives under zeus-web/.
+/node_modules/
+/package-lock.json
+
+# TypeScript incremental-build cache — rewritten on every `tsc -b`, never code
+*.tsbuildinfo
+
+# .NET
+**/bin/
+**/obj/
+**/*.user
+**/*.suo
+**/*.lscache
+*.nupkg
+
+# IDE
+.vs/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+tools/demo-server/bin/
+tools/demo-server/obj/
+# Claude Code: share skills/commands/agents, keep per-machine state local
+.claude/settings.local.json
+.claude/*.lock
+
+# Local credential store (LiteDB) — stored in user's app-data dir, never in repo
+zeus.db*
+.dbkey
+
+# Native WDSP / miniaudio build caches. The staged libraries under
+# Zeus.Dsp/runtimes/<rid>/native/ ARE committed so managed-side tests
+# don't need to run CMake before executing.
+native/build/
+native/build-miniaudio/
+
+# Playwright-MCP accessibility snapshots and console logs — regenerated
+# on every browser-automation run; do not track.
+.playwright-mcp/
+
+# Ad-hoc screenshot captures (debug PNGs) in the repo root. Real docs
+# imagery lives under docs/ when we need it.
+/*.png
+
+# Installer output directories
+installers/output/
+installers/dmg_temp/
