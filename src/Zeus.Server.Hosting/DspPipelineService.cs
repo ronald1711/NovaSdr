@@ -56,7 +56,8 @@ namespace Zeus.Server;
 
 public class DspPipelineService : BackgroundService,
     Zeus.Protocol1.IRxPacketSink,
-    Zeus.Protocol2.IRxPacketSink
+    Zeus.Protocol2.IRxPacketSink,
+    PantheonSDR.Devices.Session.IDspFeedCallback
 {
     private const int Width = 2048;
     private const int SyntheticSampleRateHz = 192_000;
@@ -1220,6 +1221,20 @@ public class DspPipelineService : BackgroundService,
     /// this many milliseconds. Default 200 ms — six analyzer frames at 30 Hz,
     /// generous tolerance for a one-off cal measurement without risking
     /// pre-tune stale data.</param>
+    // ── IDspFeedCallback (PantheonSDR multi-device) ───────────────────────────
+
+    /// <summary>
+    /// Feed IQ samples from an auxiliary device into a specific WDSP channel.
+    /// Called by <see cref="PantheonSDR.Devices.Session.Rx2PipelineService"/>
+    /// for each decimated 48 kHz IQ block from SDRplay, PlutoSDR, etc.
+    /// </summary>
+    void PantheonSDR.Devices.Session.IDspFeedCallback.FeedIq(int channelId, double[] interleavedIq)
+    {
+        IDspEngine? engine;
+        lock (_engineLock) { engine = _engine; }
+        engine?.FeedIq(channelId, interleavedIq.AsSpan());
+    }
+
     public bool TryCapturePanadapterSnapshot(
         Span<float> dest,
         out float hzPerPixel,

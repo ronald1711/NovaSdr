@@ -296,6 +296,29 @@ public static class ZeusHost
         builder.Services.AddSingleton<QrzService>();
         builder.Services.AddSingleton<LogService>();
 
+        // ── PantheonSDR multi-device services ─────────────────────────────────
+        // WDSP channel allocator: primary 0-13, auxiliary 16-29
+        builder.Services.AddSingleton<PantheonSDR.Devices.WdspChannelAllocator>();
+        // Central device registry: all discovered devices regardless of protocol
+        builder.Services.AddSingleton<PantheonSDR.Devices.DeviceRegistry>();
+        // RadioSession: the active set of attached devices (one primary + N aux)
+        builder.Services.AddSingleton<PantheonSDR.Devices.Session.RadioSession>();
+        // DeviceCoordinatorService: PTT lockout, frequency sync, conflict checks
+        builder.Services.AddSingleton<PantheonSDR.Devices.Session.DeviceCoordinatorService>();
+        builder.Services.AddHostedService(sp =>
+            sp.GetRequiredService<PantheonSDR.Devices.Session.DeviceCoordinatorService>());
+        // Rx2PipelineService: per-device IQ → WDSP pipelines for auxiliary devices
+        // DspPipelineService implements IDspFeedCallback so aux IQ flows into WDSP
+        builder.Services.AddSingleton<PantheonSDR.Devices.Session.Rx2PipelineService>(sp =>
+            new PantheonSDR.Devices.Session.Rx2PipelineService(
+                sp.GetRequiredService<PantheonSDR.Devices.Session.RadioSession>(),
+                sp.GetRequiredService<DspPipelineService>(), // implements IDspFeedCallback
+                sp.GetRequiredService<ILogger<PantheonSDR.Devices.Session.Rx2PipelineService>>()));
+        builder.Services.AddHostedService(sp =>
+            sp.GetRequiredService<PantheonSDR.Devices.Session.Rx2PipelineService>());
+        // Discovery aggregator: OpenHPSDR P1/P2 + SDRplay + PlutoSDR
+        builder.Services.AddSingleton<PantheonSDR.Devices.Session.DiscoveryAggregatorService>();
+
         // Regional band planning (issue #65 PRD). BandPlanStore loads shipped
         // JSON under BandPlans/ at startup and resolves parent→override chains;
         // BandPlanService owns active region + GetSegment/InBand hot path;
@@ -454,6 +477,7 @@ public static class ZeusHost
         }
 
         app.MapZeusEndpoints();
+        app.MapSessionEndpoints(); // PantheonSDR multi-device session API
         // PluginEndpoints.MapAll iterates manager.Active to wire each
         // IBackendPlugin's MapEndpoints into the route table. The hosted-
         // service StartAsync fires later (during app.Run), so we have to

@@ -163,4 +163,22 @@ public enum MsgType : byte
     // feedback frames (0x1x is full); UI ignores unknown types so older
     // builds tolerate this cleanly.
     CwEngineStatus = 0x30,
+
+    // ── PantheonSDR multi-device extensions ──────────────────────────────────
+
+    // Server → client (auxiliary device panadapter/waterfall).
+    // Same payload shape as DisplayFrame (0x01) but prefixed with a 1-byte
+    // device index so the frontend knows which aux canvas to update.
+    // Payload: [type:1][devIndex:u8][width:u32 LE][dbValues:f32[]…]
+    Rx2DisplayFrame = 0x40,
+
+    // Server → client (auxiliary device RX meters).
+    // Same layout as RxMetersV2 (0x19) plus devIndex prefix.
+    // Payload: [type:1][devIndex:u8][signalDbm:f32][adcPeakDb:f32][agcGainDb:f32]
+    Rx2RxMeters = 0x41,
+
+    // Server → client (session state snapshot).
+    // Broadcast on attach/detach of any device. Frontend refreshes its
+    // device list on receipt. Payload: [type:1][jsonUtf8…]
+    SessionState = 0x42,
 }

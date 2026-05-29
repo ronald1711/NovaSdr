@@ -470,6 +470,57 @@ public sealed class StreamingHub
         }
     }
 
+    // ── PantheonSDR multi-device frames ───────────────────────────────────────
+
+    /// <summary>Broadcast auxiliary device panadapter pixels (0x40).</summary>
+    public void BroadcastRx2Display(byte devIndex, ReadOnlySpan<float> dbValues)
+    {
+        if (_clients.IsEmpty) return;
+        var payload = new byte[2 + dbValues.Length * 4];
+        payload[0] = (byte)MsgType.Rx2DisplayFrame;
+        payload[1] = devIndex;
+        System.Runtime.InteropServices.MemoryMarshal.Cast<float, byte>(dbValues)
+            .CopyTo(payload.AsSpan(2));
+        foreach (var client in _clients.Values)
+        {
+            if (!client.TryEnqueue(payload))
+                System.Threading.Interlocked.Increment(ref _dropsDisplay);
+        }
+    }
+
+    /// <summary>Broadcast auxiliary device RX meters (0x41).</summary>
+    public void BroadcastRx2Meters(byte devIndex, float signalDbm, float adcPeakDb, float agcGainDb)
+    {
+        if (_clients.IsEmpty) return;
+        var payload = new byte[14]; // 1 type + 1 index + 3×f32
+        payload[0] = (byte)MsgType.Rx2RxMeters;
+        payload[1] = devIndex;
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(payload.AsSpan(2),  signalDbm);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(payload.AsSpan(6),  adcPeakDb);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(payload.AsSpan(10), agcGainDb);
+        foreach (var client in _clients.Values)
+        {
+            if (!client.TryEnqueue(payload))
+                System.Threading.Interlocked.Increment(ref _dropsOther);
+        }
+    }
+
+    /// <summary>Broadcast full session state JSON snapshot (0x42).</summary>
+    public void BroadcastSessionState(Zeus.Contracts.Session.SessionStateDto dto)
+    {
+        if (_clients.IsEmpty) return;
+        var jsonBytes = System.Text.Encoding.UTF8.GetBytes(
+            System.Text.Json.JsonSerializer.Serialize(dto));
+        var payload = new byte[1 + jsonBytes.Length];
+        payload[0] = (byte)MsgType.SessionState;
+        jsonBytes.CopyTo(payload, 1);
+        foreach (var client in _clients.Values)
+        {
+            if (!client.TryEnqueue(payload))
+                System.Threading.Interlocked.Increment(ref _dropsOther);
+        }
+    }
+
     private sealed class ClientSession
     {
         public Guid Id { get; }
