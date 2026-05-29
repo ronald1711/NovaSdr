@@ -11,7 +11,7 @@ Only **one** server instance at a time — binding conflicts otherwise. `lsof -i
 
 ## Static bundle vs Vite dev
 
-`Zeus.Server.Hosting/wwwroot/` is gitignored but served by `app.UseStaticFiles()` from `OpenhpsdrZeus/Program.cs` (which references the `Zeus.Server.Hosting` library). `npm run build` writes directly there (Vite config's `outDir`). When debugging a frontend change, rebuild **before** reloading the browser — otherwise you're testing an old bundle.
+`Zeus.Server.Hosting/wwwroot/` is gitignored but served by `app.UseStaticFiles()` from `PantheonSDR/Program.cs` (which references the `Zeus.Server.Hosting` library). `npm run build` writes directly there (Vite config's `outDir`). When debugging a frontend change, rebuild **before** reloading the browser — otherwise you're testing an old bundle.
 
 Vite dev mode (`npm run dev` on `:5173`) reads source directly and hot-reloads — handy for fast iteration but not what a live user's browser would hit.
 

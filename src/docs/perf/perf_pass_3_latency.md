@@ -356,7 +356,7 @@ window:
 
 ```bash
 git stash push -m 'perf-pass-3 latency instrumentation' -- \
-  OpenhpsdrZeus/Program.cs \
+  PantheonSDR/Program.cs \
   Zeus.Server.Hosting/ZeusHost.cs \
   Zeus.Server.Hosting/TxService.cs \
   Zeus.Server.Hosting/DspPipelineService.cs \

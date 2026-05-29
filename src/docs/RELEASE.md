@@ -56,9 +56,9 @@ Once the workflow completes:
 3. Verify all artifacts are present:
    - `openhpsdr-zeus-X.Y.Z-win-x64-setup.exe`
    - `openhpsdr-zeus-X.Y.Z-win-arm64-setup.exe`
-   - `OpenhpsdrZeus-X.Y.Z-macos-arm64.dmg`
+   - `PantheonSDR-X.Y.Z-macos-arm64.dmg`
    - `openhpsdr-zeus-X.Y.Z-linux-x64.tar.gz`
-   - `OpenhpsdrZeus-X.Y.Z-linux-x86_64.AppImage`
+   - `PantheonSDR-X.Y.Z-linux-x86_64.AppImage`
 4. Check the release notes are correctly generated
 
 ### 5. (Optional) Edit Release Notes
@@ -96,13 +96,13 @@ npm run build
 cd ..
 
 # Publish for each platform
-dotnet publish OpenhpsdrZeus/OpenhpsdrZeus.csproj -c Release -r win-x64 \
+dotnet publish PantheonSDR/PantheonSDR.csproj -c Release -r win-x64 \
   --self-contained true -p:VersionPrefix=$VERSION
 
-dotnet publish OpenhpsdrZeus/OpenhpsdrZeus.csproj -c Release -r linux-x64 \
+dotnet publish PantheonSDR/PantheonSDR.csproj -c Release -r linux-x64 \
   --self-contained true -p:VersionPrefix=$VERSION
 
-dotnet publish OpenhpsdrZeus/OpenhpsdrZeus.csproj -c Release -r osx-arm64 \
+dotnet publish PantheonSDR/PantheonSDR.csproj -c Release -r osx-arm64 \
   --self-contained true -p:VersionPrefix=$VERSION
 ```
 

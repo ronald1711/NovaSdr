@@ -52,7 +52,7 @@ These three fixes work together. Each one is necessary; together they make the W
 
 - **Nightly builds** ([#433](https://github.com/Kb2uka/openhpsdr-zeus/pull/433)). A rolling pre-release nightly installer is now published every night from the latest `develop` code at https://github.com/Kb2uka/openhpsdr-zeus/releases/tag/nightly. Useful for testers and operators who want the newest fixes between tagged releases. The "Latest" badge stays on the most recent tagged release (this one). Fixed by Brian (EI6LF).
 
-- **`miniaudio.dll` committed to the repository for fresh Windows clones** ([#448](https://github.com/Kb2uka/openhpsdr-zeus/pull/448)). Mirrors the existing `wdsp.dll` arrangement so a developer who clones the repository and runs `dotnet run --project OpenhpsdrZeus -- --desktop` on Windows gets working audio without a manual build step. Doesn't affect installed-app behaviour (the release pipeline always rebuilds the natives from source). Fixed by Brian (EI6LF).
+- **`miniaudio.dll` committed to the repository for fresh Windows clones** ([#448](https://github.com/Kb2uka/openhpsdr-zeus/pull/448)). Mirrors the existing `wdsp.dll` arrangement so a developer who clones the repository and runs `dotnet run --project PantheonSDR -- --desktop` on Windows gets working audio without a manual build step. Doesn't affect installed-app behaviour (the release pipeline always rebuilds the natives from source). Fixed by Brian (EI6LF).
 
 ### What's still next for Windows
 
@@ -96,7 +96,7 @@ We're also keeping an eye on operator reports for any remaining Windows-only qui
 
 ### Fixed
 
-- **Windows: OpenhpsdrZeus.exe no longer lingers in Task Manager after closing the desktop window** (#400, **@brianbruff**). v0.8.0 registered an `AppDomain.CurrentDomain.ProcessExit` handler in both `--desktop` and `--server` modes that called `window.Close()`. That event fires *during* exit, after `Main` returned and Photino's native state was being torn down — the handler then re-entered a half-disposed WebView2/COM apartment on the `[STAThread]` main thread, deadlocking for ~30 s. v0.8.1 deletes the handler in two lines: `Console.CancelKeyPress` already handled Ctrl-C translation; `ProcessExit` was never the right hook for shutdown.
+- **Windows: PantheonSDR.exe no longer lingers in Task Manager after closing the desktop window** (#400, **@brianbruff**). v0.8.0 registered an `AppDomain.CurrentDomain.ProcessExit` handler in both `--desktop` and `--server` modes that called `window.Close()`. That event fires *during* exit, after `Main` returned and Photino's native state was being torn down — the handler then re-entered a half-disposed WebView2/COM apartment on the `[STAThread]` main thread, deadlocking for ~30 s. v0.8.1 deletes the handler in two lines: `Console.CancelKeyPress` already handled Ctrl-C translation; `ProcessExit` was never the right hook for shutdown.
 
   Bench-verified on Windows 11: process exits in ~2.2 s after window close (down from >30 s of hang). Subsequent relaunches no longer pile up orphan processes.
 
@@ -123,8 +123,8 @@ We're also keeping an eye on operator reports for any remaining Windows-only qui
 
 ### Added — installers
 
-- **Dual desktop icons on every platform** (#392). Windows / macOS / Linux all ship a **Zeus** icon (full Photino window, `--desktop`) and a **Zeus Server** icon (backend + small Photino status window listing the LAN URLs with a Stop Zeus button, new `--server` flag). Headless service mode (`OpenhpsdrZeus` with no flag) is byte-identical to before — systemd, Docker, and Raspberry Pi deploys unaffected.
-- **Single-binary OpenhpsdrZeus** (#352, **@brianbruff**). Multi-phase rollup that collapsed Zeus.Server + Zeus.Desktop into one executable hosting both modes, vendored miniaudio for native RX sink + TX mic capture without a browser tab, and shipped the desktop-mode audio opt-out path.
+- **Dual desktop icons on every platform** (#392). Windows / macOS / Linux all ship a **Zeus** icon (full Photino window, `--desktop`) and a **Zeus Server** icon (backend + small Photino status window listing the LAN URLs with a Stop Zeus button, new `--server` flag). Headless service mode (`PantheonSDR` with no flag) is byte-identical to before — systemd, Docker, and Raspberry Pi deploys unaffected.
+- **Single-binary PantheonSDR** (#352, **@brianbruff**). Multi-phase rollup that collapsed Zeus.Server + Zeus.Desktop into one executable hosting both modes, vendored miniaudio for native RX sink + TX mic capture without a browser tab, and shipped the desktop-mode audio opt-out path.
 - **Desktop session share over LAN HTTPS** (#363, **@brianbruff**). A phone or laptop on the same network can pick up the desktop session while the operator is away from the shack PC.
 - **Always rebuild SPA before Publish** (#365, fixes #350).
 
@@ -159,7 +159,7 @@ We're also keeping an eye on operator reports for any remaining Windows-only qui
 ### Repo hygiene + docs
 
 - **CODEOWNERS** added (#366) — `* @Kb2uka`.
-- Docs: stale `Zeus.Server` paths updated to `OpenhpsdrZeus` + `Zeus.Server.Hosting` (#383, **@rampa069**).
+- Docs: stale `Zeus.Server` paths updated to `PantheonSDR` + `Zeus.Server.Hosting` (#383, **@rampa069**).
 
 ### Wiki
 

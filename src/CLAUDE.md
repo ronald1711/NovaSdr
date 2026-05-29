@@ -68,9 +68,9 @@ Anti-pattern to watch for (the one KB2UKA's PA-menu refactor fell into): adding 
 Backend + frontend run independently during dev:
 
 ```bash
-# backend (listens on :6060). OpenhpsdrZeus is the executable host;
+# backend (listens on :6060). PantheonSDR is the executable host;
 # Zeus.Server.Hosting next to it is a class library — don't pass it to dotnet run.
-dotnet run --project OpenhpsdrZeus
+dotnet run --project PantheonSDR
 
 # frontend (Vite dev server on :5173, proxies /api and /hub to :6060)
 npm --prefix zeus-web run dev
