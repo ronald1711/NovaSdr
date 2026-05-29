@@ -60,7 +60,7 @@ NovaSdr ondersteunt een tweede SDR-device als auxiliary receiver naast de primai
 
 ```
 RadioSession
-├── PrimaryTransceiver (Brick2 P2) — TX + RX
+├── PrimaryTransceiver (Brick2 P2) — TX + RX 
 └── AuxiliaryRx[0] (SDRplay / RTL-SDR / PlutoSDR) — RX monitor
 ```
 
@@ -148,7 +148,7 @@ Zie [LICENSE](LICENSE) voor de volledige licentietekst.
 
 ## Contact / Bijdragen
 
-- **Callsign:** PE5RBM (Ronald)
+- **Callsign:** PC3Y (Ronald)
 - **GitHub:** [@ronald1711](https://github.com/ronald1711)
 
 Bijdragen zijn welkom! Zie [CONTRIBUTING.md](CONTRIBUTING.md) voor richtlijnen.
