@@ -76,8 +76,8 @@ RadioSession
 
 ### MVP (0-3 maanden)
 - [x] Architectuuranalyse en ontwerp
-- [ ] IDeviceSource / ITransceiver HAL
-- [ ] RTL-SDR als RX2 device
+- [x] IDeviceSource / ITransceiver HAL (`NovaSdr.Devices`, WdspChannelAllocator, DeviceRegistry)
+- [ ] RTL-SDR als RX2 device (`RtlSdrSource`)
 - [ ] Rx2PipelineService + DeviceCoordinator
 - [ ] Multi-device React panels
 - [ ] Brick2 P1+P2 + RTL-SDR end-to-end test
