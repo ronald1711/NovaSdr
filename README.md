@@ -77,14 +77,14 @@ RadioSession
 ### MVP (0-3 maanden)
 - [x] Architectuuranalyse en ontwerp
 - [x] IDeviceSource / ITransceiver HAL (`NovaSdr.Devices`, WdspChannelAllocator, DeviceRegistry)
-- [ ] RTL-SDR als RX2 device (`RtlSdrSource`)
+- [x] SDRplay RSP1A + PlutoSDR Plus F5OEO als RX2/TX devices
 - [ ] Rx2PipelineService + DeviceCoordinator
 - [ ] Multi-device React panels
 - [ ] Brick2 P1+P2 + RTL-SDR end-to-end test
 
 ### Fase 2 (3-6 maanden)
-- [ ] SDRplay native API adapter
-- [ ] PlutoSDR / PlutoPlus adapter (libiio)
+- [x] SDRplay RSP1A native API adapter (`SdrplaySource`, `SdrplayEnumerator`)
+- [x] PlutoSDR Plus F5OEO adapter (`PlutoSdrTransceiver`, libiio)
 - [ ] CAT plugin (Kenwood TS-2000 compatibel)
 - [ ] N1MM Logger+ UDP streaming plugin
 - [ ] Station profiles (multi-device sessies)
