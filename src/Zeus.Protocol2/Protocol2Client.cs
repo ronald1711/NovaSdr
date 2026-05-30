@@ -190,6 +190,8 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
     private bool _tuneActive;
     private long _totalFrames;
     private long _droppedFrames;
+    // Bitmask of DDC indices we've seen at least one packet from (diagnostic).
+    private int _seenDdcMask;
     private uint _lastDdc0Seq;
     private bool _haveFirstDdc0;
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
@@ -1508,6 +1510,17 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
     private void HandleDdcPacket(byte[] buf, int ddcIndex)
     {
         var seq = BinaryPrimitives.ReadUInt32BigEndian(buf);
+        // One-shot per ddcIndex: proves which DDC slot the radio actually
+        // streams on. For a Hermes-class Brick2 we expect ddc=0; if we only
+        // ever see ddc=2 the board was misdetected as G2; if we never see
+        // this log at all the radio isn't streaming IQ (RX-enable problem).
+        if ((_seenDdcMask & (1 << ddcIndex)) == 0)
+        {
+            _seenDdcMask |= (1 << ddcIndex);
+            _log.LogInformation(
+                "p2.ddc.first packet on ddc={Ddc} (port {Port}) board={Board} expectedRxDdc={Exp}",
+                ddcIndex, 1035 + ddcIndex, _boardKind, RxBaseDdc(_boardKind));
+        }
         if (ddcIndex == 0)
         {
             if (_haveFirstDdc0 && seq != _lastDdc0Seq + 1)
@@ -1620,10 +1633,17 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
         if (_lastHiPriLogTicks == 0 || elapsedMs >= 1000)
         {
             _lastHiPriLogTicks = nowTicks;
+            // iqFrames=DDC IQ packets fed to WDSP. If this stays 0 while the
+            // radio is connected the panadapter is blank because no IQ is
+            // arriving on ports 1035-1041 (board/DDC routing or RX-enable
+            // command problem) — distinct from "IQ arrives but WDSP/display
+            // drops it" where iqFrames climbs but the trace is still flat.
             _log.LogInformation(
-                "p2.hi_pri.rx pkts={Pkts} fwd={Fwd} rev={Rev} exc={Exc} ptt={Ptt} pll={Pll}",
+                "p2.hi_pri.rx pkts={Pkts} iqFrames={Iq} board={Board} rxDdc={Ddc} fwd={Fwd} rev={Rev} ptt={Ptt} pll={Pll}",
                 Interlocked.Read(ref _hiPriPackets),
-                reading.FwdAdc, reading.RevAdc, reading.ExciterAdc,
+                Interlocked.Read(ref _totalFrames),
+                _boardKind, RxBaseDdc(_boardKind),
+                reading.FwdAdc, reading.RevAdc,
                 reading.PttIn, reading.PllLocked);
         }
 
