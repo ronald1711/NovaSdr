@@ -43,7 +43,6 @@ public sealed class PlutoSdrTransceiver : ITransceiver
     private bool _mox;
 
     private Channel<IqBlock>? _iqChannel;
-    private Channel<TxFeedbackBlock>? _feedbackChannel;
     private CancellationTokenSource? _streamCts;
 
     public PlutoSdrTransceiver(string uri, string friendlyName, ILogger<PlutoSdrTransceiver> logger)
@@ -293,7 +292,6 @@ public sealed class PlutoSdrTransceiver : ITransceiver
     {
         _streamCts?.Cancel();
         _iqChannel?.Writer.TryComplete();
-        _feedbackChannel?.Writer.TryComplete();
 
         if (_rxBuf != nint.Zero) { IioNative.BufferDestroy(_rxBuf); _rxBuf = nint.Zero; }
         if (_txBuf != nint.Zero) { IioNative.BufferDestroy(_txBuf); _txBuf = nint.Zero; }

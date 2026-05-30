@@ -99,8 +99,11 @@ public sealed class DiscoveryAggregatorService(
         {
             var enumerator = new PlutoEnumerator(
                 loggerFactory.CreateLogger<PlutoEnumerator>());
-            return [..enumerator.EnumerateNetwork(loggerFactory, extraHosts),
-                    ..( enumerator.EnumerateUsb(loggerFactory) is { } usb ? [usb] : [] )];
+            var results = new List<IDeviceSource>(
+                enumerator.EnumerateNetwork(loggerFactory, extraHosts));
+            if (enumerator.EnumerateUsb(loggerFactory) is { } usb)
+                results.Add(usb);
+            return results;
         }
         catch (Exception ex)
         {

@@ -17,15 +17,6 @@ public sealed class SampleRateBridge : IDisposable
     private readonly int _decimationFactor;
     private readonly double[] _filterCoefficients;
 
-    // Filter delay line (state tussen blokken)
-    private readonly double[] _delayI;
-    private readonly double[] _delayQ;
-    private int _delayIndex;
-
-    // Buffer voor deelverwerking
-    private double[] _inputBuffer = [];
-    private int _inputBufferFill;
-
     public SampleRateBridge(int inputRateHz, int outputRateHz = 48_000)
     {
         _inputRateHz  = inputRateHz;
@@ -36,12 +27,8 @@ public sealed class SampleRateBridge : IDisposable
 
         // Anti-aliasing lowpass FIR (windowed sinc)
         // Afkapfrequentie = Nyquist van outputRate = outputRate / 2
-        var cutoff = (double)outputRateHz / inputRateHz; // normaliseerd op inputRate
+        var cutoff = (double)outputRateHz / inputRateHz; // normalised to inputRate
         _filterCoefficients = DesignLowpassFir(cutoff, filterLength: 63);
-
-        _delayI = new double[_filterCoefficients.Length];
-        _delayQ = new double[_filterCoefficients.Length];
-        _inputBuffer = new double[_decimationFactor * 1024 * 2];
     }
 
     public int InputRateHz  => _inputRateHz;
