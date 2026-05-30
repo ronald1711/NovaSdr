@@ -79,6 +79,11 @@ public sealed class RadioDiscoveryService : IRadioDiscovery
         {
             EnableBroadcast = true,
         };
+        // Windows: a broadcast probe to a host with no listener provokes an ICMP
+        // port-unreachable, and the NEXT ReceiveFrom then throws SocketException
+        // 10054 (WSAECONNRESET) — aborting discovery before any radio replies.
+        // SIO_UDP_CONNRESET=0 disables that. No-op off-Windows.
+        DisableUdpConnReset(socket);
         socket.Bind(new IPEndPoint(IPAddress.Any, 0));
 
         var packet = BuildDiscoveryPacket();
@@ -107,6 +112,14 @@ public sealed class RadioDiscoveryService : IRadioDiscovery
                 catch (OperationCanceledException)
                 {
                     break;
+                }
+                catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
+                {
+                    // Stray ICMP port-unreachable from a prior probe (Windows).
+                    // Keep listening — a real radio reply may still arrive within
+                    // the timeout window. The SIO_UDP_CONNRESET ioctl above should
+                    // prevent this, but stay resilient if the stack rejected it.
+                    continue;
                 }
                 catch (SocketException ex)
                 {
@@ -240,6 +253,15 @@ public sealed class RadioDiscoveryService : IRadioDiscovery
         }
 
         return targets;
+    }
+
+    // Disable Windows' WSAECONNRESET-on-UDP behaviour (see call site).
+    private const int SIO_UDP_CONNRESET = -1744830452; // 0x9800000C
+    private static void DisableUdpConnReset(Socket s)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try { s.IOControl(SIO_UDP_CONNRESET, new byte[4], null); }
+        catch (SocketException) { /* best effort */ }
     }
 
     private static byte[] BuildDiscoveryPacket()

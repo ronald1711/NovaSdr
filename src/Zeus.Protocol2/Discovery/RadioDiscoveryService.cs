@@ -79,6 +79,8 @@ public sealed class RadioDiscoveryService : IRadioDiscovery
         {
             EnableBroadcast = true,
         };
+        // Windows WSAECONNRESET (10054) guard — see Protocol2Client.DisableUdpConnReset.
+        Protocol2Client.DisableUdpConnReset(socket);
         socket.Bind(new IPEndPoint(IPAddress.Any, 0));
 
         var packet = BuildDiscoveryPacket();
@@ -244,6 +246,7 @@ public sealed class RadioDiscoveryService : IRadioDiscovery
         _log.LogInformation("p2.discovery.probe target={Target}", target);
 
         using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        Protocol2Client.DisableUdpConnReset(socket); // Windows WSAECONNRESET guard
         socket.Bind(new IPEndPoint(IPAddress.Any, 0));
 
         var packet = BuildDiscoveryPacket();

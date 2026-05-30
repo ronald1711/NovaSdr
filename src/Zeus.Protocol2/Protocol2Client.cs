@@ -316,6 +316,20 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
     /// command traffic to the correct NIC on multi-homed Windows hosts so the
     /// radio streams IQ back to an address the host is actually listening on.
     /// </summary>
+    // Windows: a UDP SendTo that provokes an ICMP "port unreachable" makes the
+    // NEXT ReceiveFrom throw SocketException 10054 (WSAECONNRESET) instead of
+    // being ignored. In the P2 receive loop that uncaught throw tears down the
+    // IQ task on the first stray ICMP — the DDC stream stops and the panadapter
+    // goes blank. SIO_UDP_CONNRESET=0 disables that behaviour so recv keeps
+    // running. No-op / unsupported off-Windows (Linux already ignores the ICMP).
+    private const int SIO_UDP_CONNRESET = -1744830452; // 0x9800000C
+    internal static void DisableUdpConnReset(Socket s)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        try { s.IOControl(SIO_UDP_CONNRESET, new byte[4], null); }
+        catch (SocketException) { /* best effort — older stacks may reject it */ }
+    }
+
     internal static IPAddress? FindLocalAddressForSubnet(IPAddress radioIp)
     {
         if (radioIp.AddressFamily != AddressFamily.InterNetwork) return null;
@@ -356,6 +370,7 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
 
         _radioEndpoint = new IPEndPoint(radioEndpoint.Address, 1024);
         var sock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        DisableUdpConnReset(sock);
 
         // Bind to the LOCAL interface on the radio's subnet rather than
         // IPAddress.Any. On a multi-NIC host (Windows boxes with VPN/TAP/
@@ -1520,6 +1535,15 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
                 }
                 catch (SocketException ex) when (ex.SocketErrorCode == SocketError.TimedOut)
                 {
+                    continue;
+                }
+                catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
+                {
+                    // Windows WSAECONNRESET (10054): a prior SendTo provoked an
+                    // ICMP port-unreachable. Without this the IQ loop would die
+                    // on the first stray ICMP and the panadapter would freeze.
+                    // SIO_UDP_CONNRESET (set at connect) should prevent it; this
+                    // catch keeps us alive if the ioctl was rejected. Keep going.
                     continue;
                 }
                 catch (SocketException ex) when (ex.SocketErrorCode == SocketError.Interrupted
