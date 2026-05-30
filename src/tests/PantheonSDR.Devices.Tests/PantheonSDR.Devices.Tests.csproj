@@ -14,6 +14,12 @@
     </PackageReference>
     <PackageReference Include="FluentAssertions" Version="8.2.0" />
   </ItemGroup>
+  <!-- Global using for the Xunit namespace (Fact/Theory/InlineData), matching
+       the other test projects in the solution. Without this the test files
+       would each need an explicit `using Xunit;`. -->
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\PantheonSDR.Devices\PantheonSDR.Devices.csproj" />
   </ItemGroup>
