@@ -6,4 +6,13 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>PantheonSDR.Devices</RootNamespace>
   </PropertyGroup>
+
+  <!-- NuGet: ILogger<>, ILoggerFactory, BackgroundService.
+       PantheonSDR.Devices is deliberately decoupled from the Zeus protocol
+       assemblies — OpenHPSDR control flows through Zeus.Server.Hosting's
+       RadioService, so the device adapters here only need the abstractions. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions"  Version="10.0.0" />
+  </ItemGroup>
 </Project>

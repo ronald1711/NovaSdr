@@ -3,59 +3,61 @@ using System.Runtime.InteropServices;
 namespace PantheonSDR.Devices.SdrPlay;
 
 /// <summary>
-/// P/Invoke bindings voor SDRplay API 3.x.
-/// Gebruiker installeert de API zelf via https://www.sdrplay.com/api/
+/// P/Invoke bindings for the SDRplay API 3.x.
+/// Install the API from https://www.sdrplay.com/api/
 /// Windows: sdrplay_api.dll  |  Linux: libsdrplay_api.so  |  macOS: libsdrplay_api.dylib
+///
+/// NOTE: Uses classic [DllImport] throughout — the [LibraryImport] source
+/// generator (SYSLIB1051) cannot marshal structs with ByValTStr or nested
+/// function-pointer fields. DllImport handles all marshalling correctly.
 /// </summary>
-internal static partial class SdrplayNative
+internal static class SdrplayNative
 {
     private const string Lib = "sdrplay_api";
 
     // ── Lifecycle ────────────────────────────────────────────────────────────
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_Open")]
-    internal static partial SdrplayError Open();
+    [DllImport(Lib, EntryPoint = "sdrplay_api_Open", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError Open();
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_Close")]
-    internal static partial SdrplayError Close();
+    [DllImport(Lib, EntryPoint = "sdrplay_api_Close", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError Close();
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_ApiVersion")]
-    internal static partial SdrplayError ApiVersion(out float version);
+    [DllImport(Lib, EntryPoint = "sdrplay_api_ApiVersion", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError ApiVersion(out float version);
 
     // ── Device enumeration ───────────────────────────────────────────────────
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_GetDevices")]
-    internal static partial SdrplayError GetDevices(
+    [DllImport(Lib, EntryPoint = "sdrplay_api_GetDevices", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError GetDevices(
         [Out] SdrplayDeviceT[] devices,
         out uint numDevs,
         uint maxNumDevs);
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_SelectDevice")]
-    internal static partial SdrplayError SelectDevice(ref SdrplayDeviceT device);
+    [DllImport(Lib, EntryPoint = "sdrplay_api_SelectDevice", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError SelectDevice(ref SdrplayDeviceT device);
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_ReleaseDevice")]
-    internal static partial SdrplayError ReleaseDevice(ref SdrplayDeviceT device);
+    [DllImport(Lib, EntryPoint = "sdrplay_api_ReleaseDevice", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError ReleaseDevice(ref SdrplayDeviceT device);
 
     // ── Parameters ───────────────────────────────────────────────────────────
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_GetDeviceParams")]
-    internal static partial SdrplayError GetDeviceParams(
-        nint dev,
-        out nint deviceParams);
+    [DllImport(Lib, EntryPoint = "sdrplay_api_GetDeviceParams", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError GetDeviceParams(nint dev, out nint deviceParams);
 
     // ── Streaming ────────────────────────────────────────────────────────────
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_Init")]
-    internal static partial SdrplayError Init(
+    [DllImport(Lib, EntryPoint = "sdrplay_api_Init", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError Init(
         nint dev,
         ref SdrplayCallbackFns callbackFns,
         nint cbContext);
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_Uninit")]
-    internal static partial SdrplayError Uninit(nint dev);
+    [DllImport(Lib, EntryPoint = "sdrplay_api_Uninit", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError Uninit(nint dev);
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_Update")]
-    internal static partial SdrplayError Update(
+    [DllImport(Lib, EntryPoint = "sdrplay_api_Update", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError Update(
         nint dev,
         SdrplayTunerSelect tuner,
         SdrplayReasonForUpdate reasonForUpdate,
@@ -63,8 +65,8 @@ internal static partial class SdrplayNative
 
     // ── Debug ────────────────────────────────────────────────────────────────
 
-    [LibraryImport(Lib, EntryPoint = "sdrplay_api_DebugEnable")]
-    internal static partial SdrplayError DebugEnable(nint dev, uint enable);
+    [DllImport(Lib, EntryPoint = "sdrplay_api_DebugEnable", CallingConvention = CallingConvention.Cdecl)]
+    internal static extern SdrplayError DebugEnable(nint dev, uint enable);
 }
 
 // ── Enums ────────────────────────────────────────────────────────────────────
