@@ -12,12 +12,18 @@ dist/
 .vite/
 *.tsbuildinfo
 
-# Native builds
+# Native builds (CMake intermediate output only)
 native/*/build/
+
+# Ignore stray native libs in build output, but KEEP the committed runtime
+# binaries under any */runtimes/**/native/ folder. The leading **/ matters:
+# the real path is src/Zeus.Dsp/runtimes/... so a bare 'Zeus.Dsp/...' negation
+# never matches and the WDSP/miniaudio DLLs get stripped from the repo —
+# every fresh clone then fails with DllNotFoundException('wdsp').
 *.so
 *.dylib
 *.dll
-!Zeus.Dsp/runtimes/**
+!**/runtimes/**
 
 # OS
 .DS_Store
